@@ -1,0 +1,117 @@
+### ExpressJS Routes
+
+These routes handle business logic, sensitive data (e.g., users, orders, payments), and integrations like seller applications, carts, wishlists, orders, and promotions. Assume JWT authentication middleware for protected routes (e.g., using `authMiddleware`). Routes are organized by resource, with HTTP methods, paths, descriptions, and access roles.
+
+#### Authentication Routes
+
+- **POST /api/auth/register**: Register a new user (buyer by default). Body: { firstName, lastName, email, password, phone }. Returns JWT token. (Public)
+- **POST /api/auth/login**: Login user. Body: { email, password }. Returns JWT token. (Public)
+- **POST /api/auth/logout**: Logout (invalidate token if using blacklist). (Authenticated: Any role)
+- **POST /api/auth/forgot-password**: Send password reset email. Body: { email }. (Public)
+- **POST /api/auth/reset-password**: Reset password with token. Body: { token, newPassword }. (Public)
+
+#### User Routes
+
+- **GET /api/users/me**: Get current user's profile (including addresses, paymentMethods). (Authenticated: Any role)
+- **PUT /api/users/me**: Update current user's profile (e.g., name, phone). Body: { firstName, lastName, phone }. (Authenticated: Any role)
+- **POST /api/users/me/addresses**: Add a new address. Body: { street, city, state, country, postalCode, isDefault }. (Authenticated: Buyer/Seller)
+- **PUT /api/users/me/addresses/:addressIndex**: Update an existing address (by array index). Body: same as add. (Authenticated: Buyer/Seller)
+- **DELETE /api/users/me/addresses/:addressIndex**: Delete an address. (Authenticated: Buyer/Seller)
+- **POST /api/users/me/payment-methods**: Add a new payment method (integrate with gateway like Stripe for token). Body: { type, token, last4, isDefault }. (Authenticated: Buyer/Seller)
+- **PUT /api/users/me/payment-methods/:methodIndex**: Update a payment method. Body: same as add. (Authenticated: Buyer/Seller)
+- **DELETE /api/users/me/payment-methods/:methodIndex**: Delete a payment method. (Authenticated: Buyer/Seller)
+- **GET /api/users**: Get all users (paginated, filtered by role). Query: ?role=seller&page=1&limit=10. (Authenticated: Admin)
+- **PUT /api/users/:userId**: Update user (e.g., role for seller approval). Body: { role }. (Authenticated: Admin)
+- **DELETE /api/users/:userId**: Delete user. (Authenticated: Admin)
+
+#### Seller Application Routes
+
+- **POST /api/seller-applications**: Submit seller application. Body: { businessName, businessDescription, taxId, businessAddress }. (Authenticated: Buyer)
+- **GET /api/seller-applications/me**: Get current user's application status. (Authenticated: Buyer/Seller)
+- **GET /api/seller-applications**: Get all applications (paginated, filtered by status). Query: ?status=pending&page=1&limit=10. (Authenticated: Admin)
+- **GET /api/seller-applications/:appId**: Get specific application. (Authenticated: Admin)
+- **PUT /api/seller-applications/:appId**: Review application (approve/reject). Body: { status, rejectionReason }. Also updates user role if approved. (Authenticated: Admin)
+
+#### Order Routes
+
+- **POST /api/orders**: Create order from cart (apply promotions, process payment via gateway). Body: { shippingAddressIndex, paymentMethodIndex, promoCode }. Clears cart on success. (Authenticated: Buyer)
+- **GET /api/orders/me**: Get current user's orders (paginated). Query: ?status=pending&page=1&limit=10. (Authenticated: Buyer/Seller - sellers see their sold orders)
+- **GET /api/orders/:orderId**: Get specific order details. (Authenticated: Buyer/Seller/Admin - ownership check for buyer/seller)
+- **PUT /api/orders/:orderId/status**: Update order status (e.g., ship, deliver). Body: { status }. (Authenticated: Seller/Admin - seller only for their orders)
+- **PUT /api/orders/:orderId/payment**: Update payment status (webhook from gateway). Body: { paymentStatus }. (Protected: Webhook only)
+- **GET /api/orders**: Get all orders (paginated, filtered). Query: ?buyerId=...&status=... (Authenticated: Admin)
+- **DELETE /api/orders/:orderId**: Cancel order (if pending). (Authenticated: Buyer/Admin)
+
+#### Cart Routes
+
+- **GET /api/carts/me**: Get current user's cart. (Authenticated: Buyer)
+- **POST /api/carts/me/items**: Add item to cart. Body: { productId, quantity }. (Authenticated: Buyer)
+- **PUT /api/carts/me/items/:productId**: Update item quantity. Body: { quantity }. (Authenticated: Buyer)
+- **DELETE /api/carts/me/items/:productId**: Remove item from cart. (Authenticated: Buyer)
+- **DELETE /api/carts/me**: Clear entire cart. (Authenticated: Buyer)
+
+#### Wishlist Routes
+
+- **GET /api/wishlists/me**: Get current user's wishlist. (Authenticated: Buyer)
+- **POST /api/wishlists/me/items**: Add item to wishlist. Body: { productId }. (Authenticated: Buyer)
+- **DELETE /api/wishlists/me/items/:productId**: Remove item from wishlist. (Authenticated: Buyer)
+- **DELETE /api/wishlists/me**: Clear entire wishlist. (Authenticated: Buyer)
+
+#### Promotion Routes
+
+- **POST /api/promotions**: Create new promotion. Body: { name, code, description, discountType, discountValue, minPurchaseAmount, applicableTo, products, categories, startDate, endDate, usageLimit }. (Authenticated: Admin/Seller - sellers for their products)
+- **GET /api/promotions**: Get all promotions (paginated, active only for buyers). Query: ?active=true&page=1&limit=10. (Authenticated: Any role - filtered by role)
+- **GET /api/promotions/:promoId**: Get specific promotion. (Authenticated: Admin/Seller - ownership check)
+- **PUT /api/promotions/:promoId**: Update promotion. Body: same as create. (Authenticated: Admin/Seller - ownership)
+- **DELETE /api/promotions/:promoId**: Delete promotion. (Authenticated: Admin/Seller - ownership)
+- **POST /api/promotions/validate**: Validate promo code during checkout. Body: { code, orderDetails }. Returns discount amount. (Authenticated: Buyer)
+
+#### Integration Routes (Optional, for business logic)
+
+- **POST /api/webhooks/payment**: Handle payment gateway webhooks (e.g., Stripe). (Public, but secured with signature)
+- **GET /api/search/products**: Proxy or integrate with Strapi for product search (if needed for business logic). Query: ?q=keyword. (Public/Authenticated)
+
+### Strapi Endpoints
+
+Strapi provides RESTful APIs for content management (e.g., products, categories, reviews). These are auto-generated based on collections. Use Strapi's RBAC to restrict:
+
+- Buyers: Read-only for products/categories.
+- Sellers: CRUD on their own products (custom controller to scope by `seller` field).
+- Admins: Full access.
+  Endpoints follow `/api/:collection` pattern. Assume JWT auth from Strapi or shared with ExpressJS.
+
+#### Product Endpoints
+
+- **GET /api/products**: List products (paginated, filtered by category, seller, sku). Query: ?filters[category][$eq]=id&pagination[page]=1&pagination[limit]=10. (Public/Authenticated: Any role)
+- **GET /api/products/:id**: Get single product (populate images, reviews). (Public/Authenticated: Any role)
+- **POST /api/products**: Create product. Body: { name, description, price, discountPrice, stock, sku, category, images }. Auto-sets `seller` to current user. (Authenticated: Seller/Admin)
+- **PUT /api/products/:id**: Update product (ownership check for sellers). Body: same as create. (Authenticated: Seller/Admin)
+- **DELETE /api/products/:id**: Delete product (ownership check). (Authenticated: Seller/Admin)
+
+#### Category Endpoints
+
+- **GET /api/categories**: List categories (hierarchical with parentCategory). Query: ?filters[parentCategory][$null]=true. (Public)
+- **GET /api/categories/:id**: Get single category. (Public)
+- **POST /api/categories**: Create category. Body: { name, description, parentCategory }. (Authenticated: Admin)
+- **PUT /api/categories/:id**: Update category. (Authenticated: Admin)
+- **DELETE /api/categories/:id**: Delete category. (Authenticated: Admin)
+
+#### Review Endpoints
+
+- **GET /api/reviews**: List reviews (filtered by product). Query: ?filters[product][$eq]=id. (Public)
+- **GET /api/reviews/:id**: Get single review. (Public)
+- **POST /api/reviews**: Create review. Body: { product, rating, comment }. Auto-sets `user` to current. (Authenticated: Buyer - after purchase check via custom logic)
+- **PUT /api/reviews/:id**: Update review (ownership check). (Authenticated: Buyer)
+- **DELETE /api/reviews/:id**: Delete review (ownership or admin). (Authenticated: Buyer/Admin)
+
+### Notes on Implementation
+
+- **Authentication**: Share JWT between ExpressJS and Strapi (e.g., same secret) or use Strapi's auth plugins. For seller CRUD in Strapi, extend controllers with policies to check `ctx.state.user.role === 'seller'` and `product.seller === ctx.state.user.id`.
+- **Integration**: ExpressJS can call Strapi APIs internally (e.g., when creating order, fetch product details from Strapi). Use environment variables for Strapi URL.
+- **Error Handling**: All routes should handle 400 (validation), 401 (unauth), 403 (forbidden), 404 (not found), 500 (server).
+- **Pagination/Sorting**: Use query params like `page`, `limit`, `sort` in GET routes.
+- **Validation**: Use Joi or express-validator for body/query params.
+- **Performance**: Leverage MongoDB indexes as defined in schemas.
+- **Extensions**: Add rate limiting, logging, and CORS as needed.
+
+This covers all essential endpoints for the e-commerce functionality, including buyer-to-seller transitions, CRUD operations, and integrations. If you need code snippets for any route, let me know!

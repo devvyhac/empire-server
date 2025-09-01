@@ -1,0 +1,479 @@
+To support the e-commerce platform described, with MongoDB and ExpressJS handling business logic (users, orders, seller applications, carts, wishlists, promotions) and Strapi managing content (products, categories, reviews), several ExpressJS middlewares are essential for security, performance, authentication, validation, and integration. Below, I’ll outline the key middlewares that will be useful, tailored to your use case, including their purpose, implementation, and where they apply to your routes.
+
+### Middleware Categories and Recommendations
+
+#### 1. Authentication and Authorization Middleware
+
+Ensures only authenticated users access protected routes and enforces role-based access control (RBAC) for buyers, sellers, and admins.
+
+- **JSON Web Token (JWT) Authentication**
+
+  - **Purpose**: Verifies JWT tokens for authenticated routes, ensuring users are logged in. Integrates with Strapi's JWT for shared auth.
+  - **Implementation**: Use `jsonwebtoken` to verify tokens. Extract token from `Authorization: Bearer <token>` header.
+  - **Library**: `jsonwebtoken`
+  - **Example**:
+
+    ```javascript
+    const jwt = require("jsonwebtoken");
+
+    const authMiddleware = async (req, res, next) => {
+      try {
+        const token = req.headers.authorization?.split(" ")[1];
+        if (!token)
+          return res.status(401).json({ message: "No token provided" });
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded; // { id, email, role }
+        next();
+      } catch (error) {
+        res.status(401).json({ message: "Invalid or expired token" });
+      }
+    };
+    ```
+
+  - **Applied To**: All authenticated routes (e.g., `/api/users/me`, `/api/orders`, `/api/seller-applications`).
+  - **Note**: Ensure `JWT_SECRET` matches Strapi’s for seamless integration.
+
+- **Role-Based Authorization**
+
+  - **Purpose**: Restricts routes based on user role (buyer, seller, admin). For example, only sellers can create products, only admins can approve seller applications.
+  - **Implementation**: Check `req.user.role` after `authMiddleware`.
+  - **Example**:
+
+    ```javascript
+    const roleMiddleware = (roles) => (req, res, next) => {
+      if (!roles.includes(req.user.role)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      next();
+    };
+
+    // Usage: Only allow admins
+    app.get("/api/users", authMiddleware, roleMiddleware(["admin"]), getUsers);
+    ```
+
+  - **Applied To**:
+    - Admin-only: `/api/users`, `/api/seller-applications`, `/api/promotions` (CRUD).
+    - Seller-only: `/api/products` (POST, PUT, DELETE - scoped to own products), `/api/orders/:orderId/status` (for their orders).
+    - Buyer-only: `/api/orders`, `/api/carts/me`, `/api/wishlists/me`, `/api/reviews` (POST).
+  - **Note**: For seller-specific product CRUD in Strapi, extend Strapi controllers with similar logic (check `ctx.state.user.role` and `product.seller`).
+
+- **Ownership Middleware**
+
+  - **Purpose**: Ensures users only modify their own resources (e.g., sellers updating their products, buyers updating their cart).
+  - **Implementation**: Check resource ownership against `req.user.id`.
+  - **Example**:
+
+    ```javascript
+    const ownershipMiddleware = (Model, field) => async (req, res, next) => {
+      const resource = await Model.findById(req.params.id);
+      if (!resource || resource[field].toString() !== req.user.id) {
+        return res
+          .status(403)
+          .json({ message: "Not authorized to access this resource" });
+      }
+      req.resource = resource;
+      next();
+    };
+
+    // Usage: Seller updating their product
+    app.put(
+      "/api/products/:id",
+      authMiddleware,
+      roleMiddleware(["seller"]),
+      ownershipMiddleware(Product, "seller"),
+      updateProduct
+    );
+    ```
+
+  - **Applied To**: `/api/products/:id` (PUT, DELETE), `/api/orders/:orderId` (GET, PUT), `/api/reviews/:id` (PUT, DELETE), `/api/carts/me`, `/api/wishlists/me`.
+
+#### 2. Input Validation Middleware
+
+Prevents invalid or malicious inputs, ensuring data integrity for MongoDB and Strapi.
+
+- **Request Body Validation**
+
+  - **Purpose**: Validates request bodies (e.g., user registration, order creation) against schemas to prevent bad data.
+  - **Library**: `express-validator`
+  - **Example**:
+
+    ```javascript
+    const { body, validationResult } = require("express-validator");
+
+    const validateUserRegistration = [
+      body("firstName").isString().isLength({ min: 2, max: 50 }).trim(),
+      body("email").isEmail().normalizeEmail(),
+      body("password").isLength({ min: 8 }),
+      (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+          return res.status(400).json({ errors: errors.array() });
+        }
+        next();
+      },
+    ];
+
+    app.post("/api/auth/register", validateUserRegistration, registerUser);
+    ```
+
+  - **Applied To**: POST/PUT routes like `/api/auth/register`, `/api/orders`, `/api/seller-applications`, `/api/promotions`, `/api/users/me/addresses`.
+  - **Note**: Define schemas for each endpoint (e.g., address, payment method, promotion).
+
+- **Query Parameter Validation**
+
+  - **Purpose**: Validates query params (e.g., pagination, filters) for GET routes.
+  - **Library**: `express-validator`
+  - **Example**:
+
+    ```javascript
+    const { query } = require("express-validator");
+
+    const validatePagination = [
+      query("page").optional().isInt({ min: 1 }).toInt(),
+      query("limit").optional().isInt({ min: 1, max: 100 }).toInt(),
+      (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+          return res.status(400).json({ errors: errors.array() });
+        }
+        next();
+      },
+    ];
+
+    app.get("/api/products", validatePagination, getProducts);
+    ```
+
+  - **Applied To**: GET routes with pagination/filters (e.g., `/api/products`, `/api/orders`, `/api/promotions`).
+
+#### 3. Security Middleware
+
+Protects against common vulnerabilities and secures sensitive data.
+
+- **Helmet**
+
+  - **Purpose**: Sets security-related HTTP headers (e.g., Content-Security-Policy, X-XSS-Protection).
+  - **Library**: `helmet`
+  - **Example**:
+    ```javascript
+    const helmet = require("helmet");
+    app.use(helmet());
+    ```
+  - **Applied To**: All routes (global middleware).
+  - **Note**: Customize CSP if integrating with Strapi or external services.
+
+- **CORS**
+
+  - **Purpose**: Allows cross-origin requests from your frontend or Strapi.
+  - **Library**: `cors`
+  - **Example**:
+    ```javascript
+    const cors = require("cors");
+    app.use(
+      cors({
+        origin: [process.env.FRONTEND_URL, process.env.STRAPI_URL],
+        credentials: true,
+      })
+    );
+    ```
+  - **Applied To**: All routes, especially for frontend/Strapi integration.
+
+- **Rate Limiting**
+
+  - **Purpose**: Prevents abuse (e.g., brute force on `/api/auth/login` or excessive API calls).
+  - **Library**: `express-rate-limit`
+  - **Example**:
+
+    ```javascript
+    const rateLimit = require("express-rate-limit");
+    const authLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 10, // 10 requests per window
+      message: "Too many login attempts, please try again later",
+    });
+
+    app.post("/api/auth/login", authLimiter, loginUser);
+    ```
+
+  - **Applied To**: Public routes (`/api/auth/login`, `/api/auth/register`, `/api/auth/forgot-password`).
+
+- **Sanitization**
+
+  - **Purpose**: Sanitizes inputs to prevent XSS or injection attacks.
+  - **Library**: `express-mongo-sanitize`, `xss-clean`
+  - **Example**:
+
+    ```javascript
+    const mongoSanitize = require("express-mongo-sanitize");
+    const xss = require("xss-clean");
+
+    app.use(mongoSanitize()); // Removes $ and . from inputs
+    app.use(xss()); // Sanitizes HTML in inputs
+    ```
+
+  - **Applied To**: All routes with user input (global).
+
+#### 4. Logging Middleware
+
+Tracks requests for debugging and monitoring.
+
+- **Request Logging**
+  - **Purpose**: Logs incoming requests (method, path, user) for debugging and auditing.
+  - **Library**: `morgan` or custom logger
+  - **Example**:
+    ```javascript
+    const morgan = require("morgan");
+    app.use(morgan("combined")); // Logs to console/file
+    ```
+  - **Applied To**: All routes (global).
+  - **Note**: Integrate with a logging service (e.g., Winston) for production.
+
+#### 5. Error Handling Middleware
+
+Catches and formats errors consistently.
+
+- **Global Error Handler**
+
+  - **Purpose**: Standardizes error responses (e.g., validation, auth, server errors).
+  - **Example**:
+
+    ```javascript
+    const errorHandler = (err, req, res, next) => {
+      console.error(err.stack);
+      const status = err.status || 500;
+      res.status(status).json({
+        message: err.message || "Internal server error",
+        ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+      });
+    };
+
+    app.use(errorHandler);
+    ```
+
+  - **Applied To**: All routes (global, at end of middleware chain).
+
+#### 6. Performance Middleware
+
+Improves API performance and scalability.
+
+- **Compression**
+
+  - **Purpose**: Compresses response bodies to reduce bandwidth.
+  - **Library**: `compression`
+  - **Example**:
+    ```javascript
+    const compression = require("compression");
+    app.use(compression());
+    ```
+  - **Applied To**: All routes (global).
+
+- **Caching**
+
+  - **Purpose**: Caches frequently accessed data (e.g., product listings) to reduce MongoDB/Strapi queries.
+  - **Library**: `apicache` or Redis-based caching
+  - **Example**:
+
+    ```javascript
+    const apicache = require("apicache");
+    const cache = apicache.middleware;
+
+    app.get("/api/products", cache("5 minutes"), getProducts);
+    ```
+
+  - **Applied To**: Public GET routes (`/api/products`, `/api/categories`).
+
+#### 7. Integration Middleware
+
+Handles interactions with Strapi and external services.
+
+- **Strapi API Proxy**
+
+  - **Purpose**: Forwards requests to Strapi for content (e.g., products) while adding business logic or auth.
+  - **Implementation**: Use `axios` to call Strapi’s API, passing JWT for auth.
+  - **Example**:
+
+    ```javascript
+    const axios = require("axios");
+
+    const strapiProxy = async (req, res, next) => {
+      try {
+        const response = await axios.get(
+          `${process.env.STRAPI_URL}/api/products`,
+          {
+            headers: { Authorization: req.headers.authorization },
+          }
+        );
+        req.strapiData = response.data;
+        next();
+      } catch (error) {
+        next(error);
+      }
+    };
+
+    app.get("/api/products", authMiddleware, strapiProxy, (req, res) => {
+      res.json(req.strapiData);
+    });
+    ```
+
+  - **Applied To**: Routes needing Strapi data (`/api/products`, `/api/categories`).
+  - **Note**: Add query transformation if ExpressJS filters differ from Strapi’s.
+
+- **Payment Gateway Webhook Validation**
+
+  - **Purpose**: Validates incoming webhooks from payment gateways (e.g., Stripe).
+  - **Implementation**: Use gateway-specific libraries (e.g., `stripe`).
+  - **Example**:
+
+    ```javascript
+    const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+    const webhookMiddleware = (req, res, next) => {
+      const sig = req.headers["stripe-signature"];
+      try {
+        const event = stripe.webhooks.constructEvent(
+          req.body,
+          sig,
+          process.env.STRIPE_WEBHOOK_SECRET
+        );
+        req.stripeEvent = event;
+        next();
+      } catch (error) {
+        res
+          .status(400)
+          .json({ message: "Webhook signature verification failed" });
+      }
+    };
+
+    app.post("/api/webhooks/payment", webhookMiddleware, handlePaymentWebhook);
+    ```
+
+  - **Applied To**: `/api/webhooks/payment`.
+
+#### 8. Custom Middleware for Business Logic
+
+Specific to your e-commerce needs.
+
+- **Promotion Validation**
+
+  - **Purpose**: Validates promo codes during order creation, checking applicability and updating `usedCount`.
+  - **Example**:
+
+    ```javascript
+    const Promotion = require("./models/Promotion");
+
+    const validatePromotion = async (req, res, next) => {
+      const { promoCode, orderDetails } = req.body;
+      if (!promoCode) return next();
+
+      const promotion = await Promotion.findOne({
+        code: promoCode,
+        isActive: true,
+      });
+      if (
+        !promotion ||
+        promotion.endDate < new Date() ||
+        (promotion.usageLimit && promotion.usedCount >= promotion.usageLimit)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Invalid or expired promotion" });
+      }
+
+      // Validate applicability (e.g., products, categories, minPurchaseAmount)
+      req.promotion = promotion;
+      next();
+    };
+
+    app.post(
+      "/api/orders",
+      authMiddleware,
+      roleMiddleware(["buyer"]),
+      validatePromotion,
+      createOrder
+    );
+    ```
+
+  - **Applied To**: `/api/orders`, `/api/promotions/validate`.
+
+- **Stock Check**
+
+  - **Purpose**: Ensures products in cart/order have sufficient stock before processing.
+  - **Example**:
+
+    ```javascript
+    const Product = require("./models/Product");
+
+    const checkStock = async (req, res, next) => {
+      const { items } = req.body; // Array of { productId, quantity }
+      for (const item of items) {
+        const product = await Product.findById(item.productId);
+        if (!product || product.stock < item.quantity) {
+          return res.status(400).json({
+            message: `Insufficient stock for product ${product.name}`,
+          });
+        }
+      }
+      next();
+    };
+
+    app.post(
+      "/api/orders",
+      authMiddleware,
+      roleMiddleware(["buyer"]),
+      checkStock,
+      createOrder
+    );
+    ```
+
+  - **Applied To**: `/api/orders`, `/api/carts/me/items` (POST, PUT).
+
+### Middleware Application to Routes
+
+Here’s how middlewares map to your routes:
+
+- **Global Middlewares** (apply to all routes):
+
+  - `helmet`
+  - `cors`
+  - `compression`
+  - `mongoSanitize`
+  - `xss`
+  - `morgan`
+  - `errorHandler` (at end)
+
+- **Public Routes**:
+
+  - `/api/auth/register`, `/api/auth/login`, `/api/auth/forgot-password`, `/api/auth/reset-password`:
+    - `rateLimit`
+    - `validateBody` (specific to each route)
+  - `/api/products`, `/api/categories`, `/api/reviews` (GET):
+    - `cache`
+    - `validateQuery` (for pagination/filters)
+    - `strapiProxy` (if fetching from Strapi)
+
+- **Authenticated Routes**:
+
+  - All routes under `/api/users`, `/api/orders`, `/api/carts`, `/api/wishlists`, `/api/seller-applications`, `/api/promotions`:
+    - `authMiddleware`
+    - `roleMiddleware` (specific roles)
+    - `ownershipMiddleware` (where applicable, e.g., `/api/products/:id`)
+    - `validateBody` or `validateQuery` (for POST/PUT/GET)
+
+- **Webhook Routes**:
+
+  - `/api/webhooks/payment`:
+    - `webhookMiddleware`
+
+- **Order-Specific**:
+  - `/api/orders`, `/api/carts/me/items` (POST, PUT):
+    - `checkStock`
+    - `validatePromotion` (if promoCode provided)
+
+### Notes
+
+- **Strapi Integration**: For Strapi routes (`/api/products`, `/api/categories`, `/api/reviews`), use Strapi’s built-in middleware (e.g., auth, permissions) or proxy through ExpressJS with `strapiProxy`. Extend Strapi controllers for custom logic (e.g., seller ownership).
+- **Sensitive Data**: Store passwords (hashed with `bcrypt`) and payment tokens in MongoDB via ExpressJS. Use environment variables for secrets (`JWT_SECRET`, `STRIPE_SECRET_KEY`).
+- **Performance**: Combine `apicache` with Redis for production-scale caching. Indexes in schemas (as provided) complement these middlewares.
+- **Extensibility**: Add custom middlewares for analytics (e.g., track user actions) or feature toggles if needed.
+
+If you need code for a specific middleware or help integrating with Strapi, let me know!
