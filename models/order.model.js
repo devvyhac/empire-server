@@ -41,11 +41,11 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
     shippingDetails: {
-      street: { type: String, trim: true, required: true },
+      address: { type: String, trim: true, required: true },
       city: { type: String, trim: true, required: true },
       state: { type: String, trim: true, required: true },
       country: { type: String, trim: true, required: true },
-      postalCode: { type: String, trim: true, required: true },
+      zipCode: { type: String, trim: true, required: true },
     },
     paymentStatus: {
       type: String,
@@ -53,11 +53,22 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
       required: true,
     },
-    paymentMethod: {
+    orderId: {
       type: String,
-      enum: ["credit_card", "paypal", "bank_transfer", "cod"],
+      unique: true,
       required: true,
     },
+    accessCode: {
+      type: String,
+      unique: true,
+      required: true,
+      default: "",
+    },
+    // paymentMethod: {
+    //   type: String,
+    //   enum: ["credit_card", "paypal", "bank_transfer", "cod"],
+    //   required: true,
+    // },
     orderDate: {
       type: Date,
       default: Date.now,
@@ -72,3 +83,4 @@ orderSchema.index({ buyer: 1 });
 orderSchema.index({ status: 1 });
 
 const Order = mongoose.model("Order", orderSchema);
+export default Order;

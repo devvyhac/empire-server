@@ -5,6 +5,8 @@ import "dotenv/config";
 import connectToDatabase from "./config/shop.db.js";
 import authRouter from "./routes/auth.routes.js";
 import userRouter from "./routes/user.routes.js";
+import orderRouter from "./routes/order.routes.js";
+import productRouter from "./routes/product.routes.js";
 
 const app = express();
 
@@ -16,6 +18,8 @@ app.use(cookieParser());
 // USING ROUTERS BELOW HERE
 app.use("/api/auth/", authRouter);
 app.use("/api/user/", userRouter);
+app.use("/api/order/", orderRouter);
+app.use("/api/products/", productRouter);
 
 // Error handling for invalid routes
 app.use((req, res) => {

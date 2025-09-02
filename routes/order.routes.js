@@ -1,10 +1,11 @@
 import { Router } from "express";
+import authenticate from "../middlewares/auth.middleware.js";
+import { placeOrder, verifyOrder } from "../controllers/order.controller.js";
 
-export const orderRouter = Router();
+const orderRouter = Router();
 
-orderRouter.post("/", (req, res) => {
-  res.send("create order from cart");
-});
+orderRouter.post("/", authenticate, placeOrder);
+orderRouter.post("/verify", authenticate, verifyOrder);
 
 orderRouter.get("/me", (req, res) => {
   res.send("get current user orders (authenticated)");

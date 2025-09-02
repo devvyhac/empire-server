@@ -18,7 +18,7 @@ const categorySchema = new mongoose.Schema(
       maxlength: [500, "Category description cannot exceed 500 characters"],
       default: null,
     },
-    parentCategory: {
+    parent_category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
       default: null, // For hierarchical categories
@@ -37,3 +37,4 @@ categorySchema.index({ name: 1 }); // Already unique
 categorySchema.index({ parentCategory: 1 });
 
 const Category = mongoose.model("Category", categorySchema);
+export default Category;

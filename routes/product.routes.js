@@ -1,9 +1,16 @@
 import { Router } from "express";
+import Product from "../models/product.model.js";
+import Category from "../models/category.model.js";
 
 const productRouter = Router();
 
-productRouter.get("/", (req, res) => {
-  res.send("GET all products");
+productRouter.get("/", async (req, res) => {
+  const products = await Product.find().populate({
+    path: "category",
+    model: Category,
+    select: "_id name parent_category",
+  });
+  res.status(200).json({ success: true, products });
 });
 
 productRouter.get("/:id", (req, res) => {
