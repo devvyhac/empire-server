@@ -25,9 +25,9 @@ export const register = async (req, res) => {
   const { firstName, lastName, email, password } = req.body;
 
   if (!firstName || !lastName || !email || !password) {
-    return res.status(401).json({
+    return res.status(400).json({
       success: false,
-      message: "Missing details",
+      message: "Missing details, all fields are required!",
     });
   }
 
