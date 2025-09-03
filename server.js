@@ -12,7 +12,12 @@ const app = express();
 
 // Middleware to parse JSON bodies
 app.use(express.json());
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(
+  cors({
+    origin: process.env.FRONTEND || "http://localhost:5173",
+    credentials: true,
+  })
+);
 app.use(cookieParser());
 
 // USING ROUTERS BELOW HERE
