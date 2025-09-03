@@ -5,7 +5,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "server": "nodemon ./server.js"
+    "server": "nodemon ./server.js",
+    "start": "node server.js"
+  },
+  "engine": {
+    "node": "22.x"
   },
   "keywords": [],
   "author": "",
