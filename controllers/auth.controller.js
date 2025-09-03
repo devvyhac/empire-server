@@ -10,13 +10,15 @@ const accessTokenOption = {
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   maxAge: 15 * 60 * 1000, // 15 minutes
+  path: "/",
 };
 
 const refreshTokenOption = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  maxAge: 24 * 60 * 60 * 1000, // 1 days
+  path: "/",
 };
 
 export const register = async (req, res) => {
@@ -151,6 +153,7 @@ export const refreshToken = async (req, res) => {
     refreshToken: refreshToken,
   });
   if (!storedToken || storedToken.expiresAt < Date.now()) {
+    await RefreshToken.deleteOne({ refreshToken: refreshToken });
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
     return res
@@ -173,8 +176,6 @@ export const refreshToken = async (req, res) => {
   if (!user) {
     return res.json({ success: false, message: "User not found!" });
   }
-
-  console.log("i work here");
 
   return res.json({
     success: true,
