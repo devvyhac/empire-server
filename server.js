@@ -19,6 +19,7 @@ app.use(
   })
 );
 app.use(cookieParser());
+console.log(process.env.FRONTEND);
 
 // USING ROUTERS BELOW HERE
 app.use("/api/auth/", authRouter);

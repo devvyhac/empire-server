@@ -11,6 +11,7 @@ const accessTokenOption = {
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   maxAge: 15 * 60 * 1000, // 15 minutes
   path: "/",
+  domain: process.env.DOMAIN,
 };
 
 const refreshTokenOption = {
@@ -19,6 +20,7 @@ const refreshTokenOption = {
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   maxAge: 24 * 60 * 60 * 1000, // 1 days
   path: "/",
+  domain: process.env.DOMAIN,
 };
 
 export const register = async (req, res) => {
@@ -47,10 +49,10 @@ export const register = async (req, res) => {
     await user.save();
 
     const accessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: "15m",
     });
     const refreshToken = crypto.randomBytes(64).toString("hex");
-    const refreshTokenExpiry = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+    const refreshTokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 1 day
 
     await RefreshToken.create({
       refreshToken: refreshToken,
@@ -90,6 +92,7 @@ export const login = async (req, res) => {
       message: "Email and password are required!",
     });
   }
+
   try {
     const user = await User.findOne({ email });
     if (!user) {
@@ -110,7 +113,7 @@ export const login = async (req, res) => {
     });
 
     const refreshToken = crypto.randomBytes(64).toString("hex");
-    const refreshTokenExpiry = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+    const refreshTokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 1 day
 
     await RefreshToken.create({
       refreshToken,
@@ -142,8 +145,8 @@ export const login = async (req, res) => {
 export const refreshToken = async (req, res) => {
   const { refreshToken } = req.cookies;
   if (!refreshToken) {
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    res.clearCookie("accessToken", accessTokenOption);
+    res.clearCookie("refreshToken", refreshTokenOption);
     return res
       .status(401)
       .json({ success: false, message: "No refresh refresh token provided" });
@@ -154,8 +157,8 @@ export const refreshToken = async (req, res) => {
   });
   if (!storedToken || storedToken.expiresAt < Date.now()) {
     await RefreshToken.deleteOne({ refreshToken: refreshToken });
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    res.clearCookie("accessToken", accessTokenOption);
+    res.clearCookie("refreshToken", refreshTokenOption);
     return res
       .status(401)
       .json({ success: false, message: "Invalid or Expired refresh token!" });
@@ -196,8 +199,8 @@ export const logout = async (req, res) => {
     if (refreshToken) {
       await RefreshToken.deleteOne({ refreshToken: refreshToken });
     }
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    res.clearCookie("accessToken", accessTokenOption);
+    res.clearCookie("refreshToken", refreshTokenOption);
 
     return res.json({ success: true, message: "Logged Out!" });
   } catch (error) {
