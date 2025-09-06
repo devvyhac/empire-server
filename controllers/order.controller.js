@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"; // For Node.js
 import axios from "axios";
 import Order from "../models/order.model.js";
+
 const {
   PAYSTACK_SECRET_KEY,
   PAYSTACK_INIT_PAYMENT_URL,
@@ -158,5 +159,127 @@ export const verifyOrder = async (req, res) => {
       return res.status(401).json(error);
       //   throw new Error("Failed to send request");
     }
+  }
+};
+
+export const getUserOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ buyer: req.user.userId }).populate(
+      "items.product",
+      "name price description"
+    );
+    return res.status(200).json(orders);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error });
+  }
+};
+
+export const getOrderById = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const { userId } = req.user;
+    const order = await Order.findOne({
+      orderId: orderId,
+      buyer: userId,
+    }).populate("items.product", "name price description");
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    return res.status(200).json(order);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error });
+  }
+};
+
+export const updateOrderStatus = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const newStatus = req.body.status;
+    if (
+      !["pending", "processing", "shipped", "delivered", "cancelled"].includes(
+        newStatus
+      )
+    ) {
+      return res.status(400).json({ message: "Invalid status, try again." });
+    }
+
+    const { userId } = req.user;
+    const order = await Order.findOneAndUpdate(
+      { orderId: orderId, buyer: userId },
+      { status: newStatus },
+      { new: true }
+    );
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    return res.status(200).json(order);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error });
+  }
+};
+
+export const updatePaymentStatus = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const newPaymentStatus = req.body.paymentStatus;
+    const order = await Order.findOneAndUpdate(
+      { orderId: orderId },
+      { paymentStatus: newPaymentStatus },
+      { new: true }
+    );
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    return res.status(200).json(order);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error });
+  }
+};
+
+export const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find().populate(
+      "items.product",
+      "name price description"
+    );
+    return res.status(200).json(orders);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error });
+  }
+};
+
+export const cancelOrder = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const { userId } = req.user;
+
+    const order = await Order.findOneAndUpdate(
+      { orderId: orderId, buyer: userId },
+      { status: "cancelled" },
+      { new: true }
+    );
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    return res.status(200).json(order);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error });
+  }
+};
+
+export const deleteOrder = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const { userId } = req.user;
+    const order = await Order.findOneAndDelete({
+      orderId: orderId,
+      buyer: userId,
+    });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    return res.status(200).json(order);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error });
   }
 };
