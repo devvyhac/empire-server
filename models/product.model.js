@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import slugify from "slugify";
+import { nanoid } from "nanoid";
 
 // A sub-schema for product specifications, designed to be flexible
 const specificationSchema = new mongoose.Schema({
@@ -88,6 +90,12 @@ const productSchema = new mongoose.Schema(
       ref: "User",
       required: [true, "Seller is required"],
     },
+    slug: {
+      type: String,
+      unique: true,
+      lowercase: true,
+      index: true,
+    },
     images: [
       {
         url: { type: String, required: true },
@@ -99,15 +107,28 @@ const productSchema = new mongoose.Schema(
       default: true,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 // Indexes
 productSchema.index({ seller: 1 });
 productSchema.index({ category: 1 });
 productSchema.index({ name: "text", description: "text" }); // For full-text search
+
+productSchema.pre("save", function (next) {
+  this.slug = slugify(`${this.name} ${nanoid()}`, {
+    lower: true,
+    strict: true,
+  });
+
+  this.images.forEach((img) => {
+    if (!img.altText) {
+      img.altText = this.name;
+    }
+  });
+
+  next();
+});
 
 const Product = mongoose.model("Product", productSchema);
 

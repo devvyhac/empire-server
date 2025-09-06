@@ -27,7 +27,3 @@ orderRouter.put("/me/:id/payment", authenticate, updatePaymentStatus);
 orderRouter.get("/me", authenticate, getAllOrders);
 
 export default orderRouter;
-
-// , , 
-// ORD-20250902-C69B84A0, ORD-20250904-3CEEC77C, 
-

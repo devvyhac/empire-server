@@ -7,6 +7,7 @@ import authRouter from "./routes/auth.routes.js";
 import userRouter from "./routes/user.routes.js";
 import orderRouter from "./routes/order.routes.js";
 import productRouter from "./routes/product.routes.js";
+import blogRouter from "./routes/blog.routes.js";
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use("/api/auth/", authRouter);
 app.use("/api/user/", userRouter);
 app.use("/api/order/", orderRouter);
 app.use("/api/products/", productRouter);
+app.use("/api/blogs/", blogRouter);
 
 // Error handling for invalid routes
 app.use((req, res) => {
